@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VR 360-Degree Video with Device Orientation</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #1e1e1e;
+      color: #fff;
+      text-align: center;
+      margin: 0;
+      padding: 10px;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 15px;
+    }
+
+    #upload-section {
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #2a2a2a;
+      border-radius: 12px;
+      max-width: 600px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 2px dashed #444;
+      border-radius: 8px;
+      background-color: #333;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    input[type="file"]:hover {
+      border-color: #666;
+      background-color: #3a3a3a;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      background-color: #2563eb;
+      color: #fff;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #1d4ed8;
+    }
+
+    button:disabled {
+      background-color: #4b5563;
+      cursor: not-allowed;
+    }
+
+    #video-container {
+      display: none;
+      margin-top: 20px;
+    }
+
+    #split-screen-container {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #000;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .split-video {
+      width: 50%;
+      height: 100%;
+      position: relative;
+    }
+
+    #orientation-controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: none;
+      background-color: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    #orientation-status {
+      margin-bottom: 10px;
+      font-size: 0.9em;
+      opacity: 0.8;
+    }
+
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #2563eb;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      #split-screen-container {
+        flex-direction: column;
+      }
+
+      .split-video {
+        width: 100%;
+        height: 50%;
+      }
+
+      #upload-section {
+        max-width: 100%;
+        margin: 10px;
+        padding: 15px;
+      }
+
+      h1 {
+        font-size: 1.2em;
+      }
+    }
+  </style>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+</head>
+<body>
+  <h1>VR 360-Degree Video Experience</h1>
+
+  <div id="upload-section">
+    <input type="file" id="video-upload" accept="video/*">
+    <button id="upload-btn">Load Video</button>
+  </div>
+
+  <div id="video-container">
+    <button id="enter-split-btn">Enter VR Mode</button>
+  </div>
+
+  <div id="orientation-controls">
+    <div id="orientation-status">Device Orientation: Disabled</div>
+    <button id="toggle-orientation">Enable Device Orientation</button>
+  </div>
+
+  <div id="split-screen-container">
+    <a-scene class="split-video" embedded>
+      <a-assets>
+        <video id="left-eye-video" autoplay loop crossorigin="anonymous" playsinline></video>
+      </a-assets>
+      <a-videosphere src="#left-eye-video" rotation="0 180 0"></a-videosphere>
+      <a-entity id="left-camera" camera look-controls="enabled: true" position="0 1.6 0"></a-entity>
+    </a-scene>
+
+    <a-scene class="split-video" embedded>
+      <a-assets>
+        <video id="right-eye-video" autoplay loop crossorigin="anonymous" playsinline></video>
+      </a-assets>
+      <a-videosphere src="#right-eye-video" rotation="0 180 0"></a-videosphere>
+      <a-entity id="right-camera" camera look-controls="enabled: true" position="0 1.6 0"></a-entity>
+    </a-scene>
+  </div>
+
+  <div class="loading-overlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById('upload-btn');
+    const videoUpload = document.getElementById('video-upload');
+    const videoContainer = document.getElementById('video-container');
+    const enterSplitBtn = document.getElementById('enter-split-btn');
+    const splitScreenContainer = document.getElementById('split-screen-container');
+    const leftEyeVideo = document.getElementById('left-eye-video');
+    const rightEyeVideo = document.getElementById('right-eye-video');
+    const leftCamera = document.getElementById('left-camera');
+    const rightCamera = document.getElementById('right-camera');
+    const orientationControls = document.getElementById('orientation-controls');
+    const orientationStatus = document.getElementById('orientation-status');
+    const toggleOrientationBtn = document.getElementById('toggle-orientation');
+    const loadingOverlay = document.querySelector('.loading-overlay');
+
+    let isDeviceOrientationEnabled = false;
+    let initialAlpha = 0;
+    let initialBeta = 0;
+
+    function showLoading() {
+      loadingOverlay.style.display = 'flex';
+    }
+
+    function hideLoading() {
+      loadingOverlay.style.display = 'none';
+    }
+
+    function syncVideos() {
+      if (Math.abs(leftEyeVideo.currentTime - rightEyeVideo.currentTime) > 0.1) {
+        rightEyeVideo.currentTime = leftEyeVideo.currentTime;
+      }
+      
+      if (leftEyeVideo.paused !== rightEyeVideo.paused) {
+        if (leftEyeVideo.paused) {
+          rightEyeVideo.pause();
+        } else {
+          rightEyeVideo.play().catch(console.error);
+        }
+      }
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (videoUpload.files.length > 0) {
+        showLoading();
+        
+        try {
+          const file = videoUpload.files[0];
+          const videoURL = URL.createObjectURL(file);
+
+          leftEyeVideo.src = videoURL;
+          rightEyeVideo.src = videoURL;
+
+          await Promise.all([
+            new Promise(resolve => leftEyeVideo.addEventListener('loadeddata', resolve, { once: true })),
+            new Promise(resolve => rightEyeVideo.addEventListener('loadeddata', resolve, { once: true }))
+          ]);
+
+          videoContainer.style.display = 'block';
+          leftEyeVideo.addEventListener('timeupdate', syncVideos);
+        } catch (error) {
+          console.error('Error loading video:', error);
+          alert('Error loading video. Please try again.');
+        } finally {
+          hideLoading();
+        }
+      } else {
+        alert('Please select a video file to upload.');
+      }
+    });
+
+    enterSplitBtn.addEventListener('click', async () => {
+      if (leftEyeVideo.src && rightEyeVideo.src) {
+        try {
+          await document.documentElement.requestFullscreen();
+          splitScreenContainer.style.display = 'flex';
+          
+          if (window.innerWidth <= 768) {
+            orientationControls.style.display = 'block';
+          }
+
+          // Start playing both videos
+          await Promise.all([
+            leftEyeVideo.play(),
+            rightEyeVideo.play()
+          ]);
+        } catch (error) {
+          console.error('Error entering VR mode:', error);
+          alert('Error entering VR mode. Please try again.');
+        }
+      } else {
+        alert('Please upload a video first.');
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) {
+        splitScreenContainer.style.display = 'none';
+        orientationControls.style.display = 'none';
+        disableDeviceOrientation();
+      }
+    });
+
+    function handleOrientation(event) {
+      if (!isDeviceOrientationEnabled) return;
+
+      const { alpha, beta, gamma } = event;
+      
+      if (alpha === null || beta === null || gamma === null) return;
+
+      const deltaAlpha = alpha - initialAlpha;
+      const deltaBeta = beta - initialBeta;
+
+      const rotationY = THREE.MathUtils.degToRad(deltaAlpha);
+      const rotationX = THREE.MathUtils.degToRad(deltaBeta);
+
+      // Apply smooth rotation using LERP
+      const currentRotationLeft = leftCamera.object3D.rotation;
+      const currentRotationRight = rightCamera.object3D.rotation;
+
+      currentRotationLeft.x = THREE.MathUtils.lerp(currentRotationLeft.x, rotationX, 0.1);
+      currentRotationLeft.y = THREE.MathUtils.lerp(currentRotationLeft.y, rotationY, 0.1);
+      
+      currentRotationRight.x = THREE.MathUtils.lerp(currentRotationRight.x, rotationX, 0.1);
+      currentRotationRight.y = THREE.MathUtils.lerp(currentRotationRight.y, rotationY, 0.1);
+
+      // Apply subtle position offset based on gamma (tilt)
+      const movementX = Math.sin(THREE.MathUtils.degToRad(gamma)) * 0.3;
+      
+      leftCamera.object3D.position.x = THREE.MathUtils.lerp(leftCamera.object3D.position.x, movementX, 0.1);
+      rightCamera.object3D.position.x = THREE.MathUtils.lerp(rightCamera.object3D.position.x, -movementX, 0.1);
+    }
+
+    async function enableDeviceOrientation() {
+      try {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission === 'granted') {
+            setupDeviceOrientation();
+          } else {
+            throw new Error('Permission denied');
+          }
+        } else {
+          setupDeviceOrientation();
+        }
+      } catch (error) {
+        console.error('Error enabling device orientation:', error);
+        alert('Unable to enable device orientation. Please check your device settings.');
+      }
+    }
+
+    function setupDeviceOrientation() {
+      window.addEventListener('deviceorientation', handleOrientation);
+      
+      window.addEventListener('deviceorientation', function captureInitial(event) {
+        if (event.alpha !== null) {
+          initialAlpha = event.alpha;
+          initialBeta = event.beta;
+          window.removeEventListener('deviceorientation', captureInitial);
+        }
+      }, { once: true });
+
+      isDeviceOrientationEnabled = true;
+      orientationStatus.textContent = 'Device Orientation: Enabled';
+      toggleOrientationBtn.textContent = 'Disable Device Orientation';
+    }
+
+    function disableDeviceOrientation() {
+      window.removeEventListener('deviceorientation', handleOrientation);
+      isDeviceOrientationEnabled = false;
+      orientationStatus.textContent = 'Device Orientation: Disabled';
+      toggleOrientationBtn.textContent = 'Enable Device Orientation';
+
+      leftCamera.object3D.rotation.set(0, 0, 0);
+      rightCamera.object3D.rotation.set(0, 0, 0);
+      leftCamera.object3D.position.set(0, 1.6, 0);
+      rightCamera.object3D.position.set(0, 1.6, 0);
+    }
+
+    toggleOrientationBtn.addEventListener('click', () => {
+      if (!isDeviceOrientationEnabled) {
+        enableDeviceOrientation();
+      } else {
+        disableDeviceOrientation();
+      }
+    });
+
+    if (window.DeviceOrientationEvent) {
+      console.log('Device orientation supported');
+    } else {
+      toggleOrientationBtn.disabled = true;
+      orientationStatus.textContent = 'Device Orientation: Not Supported';
+    }
+
+    // Handle video errors
+    [leftEyeVideo, rightEyeVideo].forEach(video => {
+      video.addEventListener('error', () => {
+        console.error('Video error:', video.error);
+        alert('Error playing video. Please try uploading again.');
+        hideLoading();
+      });
+    });
+  </script>
+</body>
+</html>
